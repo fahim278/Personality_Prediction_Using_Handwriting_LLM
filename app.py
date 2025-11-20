@@ -1,3 +1,25 @@
+# import os
+# import torch
+# import torch.nn as nn
+# import numpy as np
+# from PIL import Image
+# import streamlit as st
+# from torchvision import models, transforms as T
+# import requests
+# import json
+# from dotenv import load_dotenv
+# import easyocr
+# import re
+
+# # Load environment variables
+# load_dotenv()
+
+# # -----------------------------
+# # Config
+# # -----------------------------
+# CLASS_NAMES = ['Agreeableness','Conscientiousness','Extraversion','Neuroticism','Openness']
+# DEFAULT_MODEL_PATH = 'personality_model_final.pth'
+# DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import os
 import torch
 import torch.nn as nn
@@ -11,15 +33,32 @@ from dotenv import load_dotenv
 import easyocr
 import re
 
-# Load environment variables
+# Load environment variables - Works on both local and Hugging Face
 load_dotenv()
 
 # -----------------------------
-# Config
+# Hugging Face Spaces Configuration
 # -----------------------------
+# Model path - adjusted for Hugging Face environment
+MODEL_PATH = 'personality_model_final.pth'
+
+# Check if model exists
+if not os.path.exists(MODEL_PATH):
+    st.error(f"❌ Model file not found at: {MODEL_PATH}")
+    st.info("Please ensure 'personality_model_final.pth' is uploaded to your Space")
+
+# API Configuration
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+if not GROQ_API_KEY:
+    st.error("❌ GROQ_API_KEY not found in environment variables")
+    st.info("Please add GROQ_API_KEY as a secret in your Space settings")
+
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 CLASS_NAMES = ['Agreeableness','Conscientiousness','Extraversion','Neuroticism','Openness']
-DEFAULT_MODEL_PATH = 'personality_model_final.pth'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Rest of your existing code continues...
+
 #GROQ_API_KEY = os.getenv('GROQ_API_KEY', "***REMOVED***")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
