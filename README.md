@@ -44,3 +44,14 @@ If no key is set, the app returns built-in, trait-specific advice.
 - OCR gate treats “no confidently detected text” as **not handwritten** and asks to upload a handwriting image.
 - EfficientNet‑B0 expects 224×224 RGB; we use ImageNet normalization.
 - If your saved checkpoint uses a `'state_dict'` wrapper or `'module.'` prefixes, the loader handles it.
+
+
+
+Qroq API Key = ***REMOVED***
+
+
+Open AI API Key = ***REMOVED***
+
+
+
+Groq New API Kry = ***REMOVED***
