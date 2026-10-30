@@ -1,25 +1,3 @@
-# import os
-# import torch
-# import torch.nn as nn
-# import numpy as np
-# from PIL import Image
-# import streamlit as st
-# from torchvision import models, transforms as T
-# import requests
-# import json
-# from dotenv import load_dotenv
-# import easyocr
-# import re
-
-# # Load environment variables
-# load_dotenv()
-
-# # -----------------------------
-# # Config
-# # -----------------------------
-# CLASS_NAMES = ['Agreeableness','Conscientiousness','Extraversion','Neuroticism','Openness']
-# DEFAULT_MODEL_PATH = 'personality_model_final.pth'
-# DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import os
 import torch
 import torch.nn as nn
@@ -33,35 +11,22 @@ from dotenv import load_dotenv
 import easyocr
 import re
 
-# Load environment variables - Works on both local and Hugging Face
+# Load environment variables (for local development)
 load_dotenv()
 
 # -----------------------------
-# Hugging Face Spaces Configuration
+# Config
 # -----------------------------
-# Model path - adjusted for Hugging Face environment
-MODEL_PATH = 'personality_model_final.pth'
-
-# Check if model exists
-if not os.path.exists(MODEL_PATH):
-    st.error(f"❌ Model file not found at: {MODEL_PATH}")
-    st.info("Please ensure 'personality_model_final.pth' is uploaded to your Space")
-
-# API Configuration
-GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
-if not GROQ_API_KEY:
-    st.error("❌ GROQ_API_KEY not found in environment variables")
-    st.info("Please add GROQ_API_KEY as a secret in your Space settings")
-
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 CLASS_NAMES = ['Agreeableness','Conscientiousness','Extraversion','Neuroticism','Openness']
+DEFAULT_MODEL_PATH = 'personality_model_final.pth'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Rest of your existing code continues...
+# Get API key from environment (set in Hugging Face secrets)
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+if not OPENROUTER_API_KEY:
+    OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
 
-#GROQ_API_KEY = os.getenv('GROQ_API_KEY', "***REMOVED***")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # ==========================================================
 # 🔹 Text Cleaning Function
@@ -79,19 +44,22 @@ def clean_markdown_text(text):
     return text.strip()
 
 # ==========================================================
-# 🔹 Universal Function: Call Groq API
+# 🔹 Universal Function: Call OpenRouter API
 # ==========================================================
-def call_groq_api(prompt, system_message, response_format="text", max_tokens=800):
+def call_openrouter_api(prompt, system_message, response_format="text", max_tokens=800):
     """
-    Calls Groq API with the given prompt and system message.
+    Calls OpenRouter API with the given prompt and system message.
     Returns model-generated response as plain text.
     """
-    if not GROQ_API_KEY or GROQ_API_KEY == "your_groq_api_key_here":
-        raise Exception("Groq API key not configured")
+    if not OPENROUTER_API_KEY:
+        st.error("❌ OpenRouter API key not configured. Please check your environment variables.")
+        return "API key not available. Please configure OPENROUTER_API_KEY in your environment variables."
     
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com",
+        "X-Title": "Personality Insight Pro"
     }
     
     messages = []
@@ -100,7 +68,7 @@ def call_groq_api(prompt, system_message, response_format="text", max_tokens=800
     messages.append({"role": "user", "content": prompt})
     
     payload = {
-        "model": "llama-3.1-8b-instant",  # Updated to available model
+        "model": "openrouter/free",
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": max_tokens
@@ -110,7 +78,7 @@ def call_groq_api(prompt, system_message, response_format="text", max_tokens=800
         payload["response_format"] = {"type": "json_object"}
     
     try:
-        response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=45)
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=60)
         
         if response.status_code != 200:
             error_msg = f"API request failed with status {response.status_code}"
@@ -122,9 +90,12 @@ def call_groq_api(prompt, system_message, response_format="text", max_tokens=800
             raise Exception(error_msg)
         
         result = response.json()
-        return result['choices'][0]['message']['content'].strip()
+        content = result.get('choices', [{}])[0].get('message', {}).get('content')
+        if not content:
+            raise Exception("Model returned an empty response. Please try again.")
+        return content.strip()
     except Exception as e:
-        raise Exception(f"Groq API call failed: {str(e)}")
+        raise Exception(f"OpenRouter API call failed: {str(e)}")
 
 # ==========================================================
 # 🔹 English Advice Generator
@@ -167,10 +138,10 @@ def get_personalized_advice(trait: str, confidence: float, ocr_text: str = ""):
     """
 
     try:
-        advice = call_groq_api(prompt, system_message, response_format="text", max_tokens=900)
+        advice = call_openrouter_api(prompt, system_message, response_format="text", max_tokens=900)
         return advice
     except Exception as e:
-        raise Exception(f"Failed to generate English advice: {str(e)}")
+        return f"Unable to generate English advice at this time: {str(e)}"
 
 # ==========================================================
 # 🔹 Urdu Advice Generator
@@ -212,10 +183,10 @@ def get_personalized_advice_urdu(trait: str, confidence: float, ocr_text: str = 
     """
 
     try:
-        advice_urdu = call_groq_api(prompt, system_message, response_format="text", max_tokens=900)
+        advice_urdu = call_openrouter_api(prompt, system_message, response_format="text", max_tokens=900)
         return advice_urdu
     except Exception as e:
-        raise Exception(f"Failed to generate Urdu advice: {str(e)}")
+        return f"اردو مشورے فی الحال دستیاب نہیں ہیں: {str(e)}"
 
 # ==========================================================
 # 🔹 Combined JSON Response (English + Urdu)
@@ -243,7 +214,8 @@ def get_combined_advice(trait: str, confidence: float, ocr_text: str = ""):
 # -----------------------------
 @st.cache_resource(show_spinner=False)
 def load_reader():
-    reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
+    # Use CPU for Hugging Face deployment
+    reader = easyocr.Reader(['en'], gpu=False)
     return reader
 
 @st.cache_resource(show_spinner=False)
@@ -315,53 +287,79 @@ def predict_trait(model, img_tensor):
         idx = int(np.argmax(probs))
     return CLASS_NAMES[idx], float(probs[idx]), probs.tolist()
 
-def get_urdu_trait_qualities(trait: str, confidence: float):
+TRAIT_FALLBACKS = {
+    "Agreeableness": {
+        "english": ["Cooperative", "Compassionate", "Trusting", "Helpful"],
+        "urdu": ["باہمی تعاون کرنے والا", "ہمدرد", "اعتماد کرنے والا", "مددگار"]
+    },
+    "Conscientiousness": {
+        "english": ["Organized", "Dependable", "Disciplined", "Thorough"],
+        "urdu": ["منظم", "قابل اعتماد", "ضابطہ پابند", "مکمل"]
+    },
+    "Extraversion": {
+        "english": ["Talkative", "Energetic", "Sociable", "Assertive"],
+        "urdu": ["باتونی", "پرجوش", "ملنسار", "بااعتماد"]
+    },
+    "Neuroticism": {
+        "english": ["Sensitive", "Anxious", "Moody", "Emotional"],
+        "urdu": ["حساس", "پریشان", "موڈی", "جذباتی"]
+    },
+    "Openness": {
+        "english": ["Creative", "Curious", "Imaginative", "Open-minded"],
+        "urdu": ["تخلیقی", "جستجو کرنے والا", "خیالی", "کشادہ ذہن"]
+    }
+}
+
+def get_bilingual_characteristics(trait: str, confidence: float):
+    """
+    Generates bilingual characteristics for the dominant trait.
+    """
     prompt = f"""
-    Analyze the personality trait: {trait}
-    Prediction confidence: {confidence:.2f}
+    You are a personality analysis assistant.
 
-    Provide a JSON response with the following structure:
+    You are analyzing the personality trait: {trait} with {confidence:.1%} confidence.
+
+    Task:
+    1. Generate 4 key characteristics for the trait '{trait}'.
+    2. Provide them in English and their natural Urdu translations.
+
+    Return ONLY a valid JSON object:
     {{
-        "good_qualities": ["quality1 in Urdu", "quality2 in Urdu", "quality3 in Urdu", "quality4 in Urdu"],
-        "bad_qualities": ["quality1 in Urdu", "quality2 in Urdu", "quality3 in Urdu", "quality4 in Urdu"]
+      "traits": [
+        {{
+          "name": "{trait}",
+          "english": ["Char 1", "Char 2", "Char 3", "Char 4"],
+          "urdu": ["Urdu 1", "Urdu 2", "Urdu 3", "Urdu 4"]
+        }}
+      ]
     }}
-
-    Requirements:
-    - Write all qualities in Urdu language only
-    - Good qualities: 4 positive aspects of this trait
-    - Bad qualities: 4 potential negative aspects when this trait is excessive
-    - Use simple, clear Urdu language
-    - Be specific to the {trait} personality trait
-    - Ensure valid JSON format
-    - Use proper Urdu script without English translations
+    
+    Rules:
+    - Ensure Urdu translations are natural and meaningful.
+    - Return valid JSON only.
     """
     
-    system_message = """You are a psychologist who provides personality trait analysis in Urdu. 
-    Always respond with valid JSON format only. Do not add any extra text outside the JSON structure.
-    Write only in pure Urdu script without any English translations or explanations."""
+    system_message = "You are an expert psychologist providing bilingual personality analysis."
     
-    try:
-        response = call_groq_api(prompt, system_message, response_format="json", max_tokens=1000)
-        qualities = json.loads(response)
-        
-        if not isinstance(qualities, dict):
-            raise Exception("Response is not a JSON object")
-        if 'good_qualities' not in qualities or 'bad_qualities' not in qualities:
-            raise Exception("Missing required fields in response")
-        if not isinstance(qualities['good_qualities'], list) or not isinstance(qualities['bad_qualities'], list):
-            raise Exception("Qualities should be arrays")
-        if len(qualities['good_qualities']) == 0 or len(qualities['bad_qualities']) == 0:
-            raise Exception("Empty qualities arrays")
-            
-        return qualities
-        
-    except json.JSONDecodeError as e:
-        raise Exception(f"Invalid JSON response from API: {str(e)}")
-    except Exception as e:
-        raise Exception(f"Failed to parse Urdu qualities: {str(e)}")
+    for attempt in range(2):
+        try:
+            response = call_openrouter_api(prompt, system_message, response_format="json", max_tokens=800)
+            if response and not response.startswith("API key") and not response.startswith("OpenRouter API"):
+                if response.startswith("```"):
+                    response = response.split("\n", 1)[1].rsplit("```", 1)[0]
+                data = json.loads(response)
+                return data.get("traits", [])
+        except:
+            pass
+    
+    return [{
+        "name": trait,
+        "english": TRAIT_FALLBACKS.get(trait, {}).get("english", ["Unknown"]),
+        "urdu": TRAIT_FALLBACKS.get(trait, {}).get("urdu", ["نامعلوم"])
+    }]
 
 # -----------------------------
-# Streamlit UI - Fixed Layout
+# Streamlit UI
 # -----------------------------
 st.set_page_config(
     page_title="Personality Insight Pro",
@@ -640,10 +638,10 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("**🌐 API Status**")
-    if GROQ_API_KEY and GROQ_API_KEY != "your_groq_api_key_here":
-        st.success("✅ Groq API Connected")
+    if OPENROUTER_API_KEY:
+        st.success("✅ OpenRouter API Connected")
     else:
-        st.error("❌ API Key Missing")
+        st.error("❌ API Key Missing - Set OPENROUTER_API_KEY in secrets")
     
     st.markdown("---")
     st.markdown("**🤖 Model Status**")
@@ -664,7 +662,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Process Flow - Fixed to match screenshot layout
+# Process Flow
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.markdown('<div class="metric-card">📁 Upload Image</div>', unsafe_allow_html=True)
@@ -742,39 +740,38 @@ if uploaded is not None:
     prob_data = {CLASS_NAMES[i]: round(probs[i], 4) for i in range(len(CLASS_NAMES))}
     st.json(prob_data)
 
+    # Bilingual Trait Analysis Section
+    st.markdown("""
+    <div class="custom-card">
+        <h3 style="color: #1f2937; text-align: center;">🌍 Bilingual Trait Analysis</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.spinner("🔍 Analyzing traits in English & Urdu..."):
+        bilingual_data = get_bilingual_characteristics(trait, conf)
+
+    if bilingual_data:
+        for trait_info in bilingual_data:
+            st.markdown(f"### 🧠 {trait_info['name']}")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🇬🇧 English Characteristics**")
+                en_content = "".join([f"<li style='margin-bottom: 8px;'>{c}</li>" for c in trait_info['english']])
+                st.markdown(f'<ul style="margin: 0; padding-left: 20px;">{en_content}</ul>', unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown('<p style="text-align: right; margin-bottom: 0.5rem;"><strong>🇵🇰 Urdu Characteristics</strong></p>', unsafe_allow_html=True)
+                ur_content = "".join([f"<li style='margin-bottom: 8px; text-align: right; direction: rtl;'>{c}</li>" for c in trait_info['urdu']])
+                st.markdown(f'<ul style="margin: 0; padding: 0; list-style-position: inside; direction: rtl; text-align: right;">{ur_content}</ul>', unsafe_allow_html=True)
+
     # Prepare OCR context
     ocr_text_sample = ""
     if use_ocr_text_context and ocr_results:
         texts = [r[1] for r in ocr_results if isinstance(r, (list,tuple)) and len(r)>=3]
         ocr_text_sample = " | ".join(texts[:3])
 
-    # Urdu Qualities Section
-    st.markdown('<div class="urdu-section">خصوصیات کی تفصیل</div>', unsafe_allow_html=True)
-    
-    try:
-        with st.spinner("🎨 Generating Urdu descriptions..."):
-            urdu_qualities = get_urdu_trait_qualities(trait, conf)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown('<div class="urdu-heading">✅ اچھی خصوصیات</div>', unsafe_allow_html=True)
-            for quality in urdu_qualities['good_qualities']:
-                st.markdown(f'<div class="urdu-quality">• {quality}</div>', unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown('<div class="urdu-heading">⚠️ ممکنہ خرابیاں</div>', unsafe_allow_html=True)
-            for quality in urdu_qualities['bad_qualities']:
-                st.markdown(f'<div class="urdu-quality-bad">• {quality}</div>', unsafe_allow_html=True)
-                
-        st.success("🎉 Urdu descriptions generated successfully!")
-                
-    except Exception as e:
-        st.error(f"❌ Failed to generate Urdu qualities: {str(e)}")
-
-    # ==========================================================
-    # 🔹 Enhanced Personalized Advice Section (English + Urdu)
-    # ==========================================================
+    # Enhanced Personalized Advice Section
     st.markdown("""
     <div class="advice-section">
         <h2 style="color: white; text-align: center;">💡 Personalized Recommendations</h2>
@@ -876,6 +873,6 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #6b7280;">
-    <p>🧠 <strong>Personality Insight Pro</strong> - Powered by Streamlit, PyTorch & Groq AI</p>
+    <p>🧠 <strong>Personality Insight Pro</strong> - Powered by Streamlit, PyTorch & OpenRouter AI</p>
 </div>
 """, unsafe_allow_html=True)

@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Model weights / large artifacts
+*.pth
+*.pt
+*.ckpt
+*.onnx
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
